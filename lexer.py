@@ -16,6 +16,7 @@ INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF = (
     "RPAREN",
     "EOF",
 )
+STRING = "STRING"
 # 比較演算子
 EQ, NE, LT, GT, LTE, GTE = "EQ", "NE", "LT", "GT", "LTE", "GTE"
 
@@ -63,6 +64,16 @@ class Lexer:
             self.advance()
         return int(result)
 
+    def string(self):
+        """ダブルクォーテーションで囲まれた文字列を読み取る"""
+        result = ""
+        self.advance()  # 開始の " をスキップ
+        while self.current_char is not None and self.current_char != '"':
+            result += self.current_char
+            self.advance()
+        self.advance()  # 終了の " をスキップ
+        return result
+
     def _id(self):
         """英数字からなる識別子（または予約語）を読み取る"""
         result = ""
@@ -74,19 +85,12 @@ class Lexer:
         return RESERVED_KEYWORDS.get(result.lower(), Token(ID, result))
 
     def peek(self):
-        """次のトークンを覗き見する"""
-        # 現在の状態を保存
-        original_pos = self.pos
-        original_current_char = self.current_char
-
-        # 次のトークンを取得
-        token = self.get_next_token()
-
-        # 状態を元に戻す
-        self.pos = original_pos
-        self.current_char = original_current_char
-
-        return token
+        """現在のポインタを進めずに、次の文字を1つだけ覗き見る"""
+        peek_pos = self.pos + 1
+        if peek_pos > len(self.text) - 1:
+            return None  # 文字列の終端なら何もない
+        else:
+            return self.text[peek_pos]
 
     def get_next_token(self):
         """textの中から次のトークンを見つけて返す"""
@@ -104,22 +108,25 @@ class Lexer:
                 value = self.integer()
                 return Token(INTEGER, value)
 
-            if self.current_char == "=" and self.peek().value == "=":
+            if self.current_char == '"':
+                return Token(STRING, self.string())
+
+            if self.current_char == "=" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(EQ, "==")
 
-            if self.current_char == "!" and self.peek().value == "=":
+            if self.current_char == "!" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(NE, "!=")
 
-            if self.current_char == "<" and self.peek().value == "=":
+            if self.current_char == "<" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(LTE, "<=")
 
-            if self.current_char == ">" and self.peek().value == "=":
+            if self.current_char == ">" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(GTE, ">=")

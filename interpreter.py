@@ -1,6 +1,26 @@
 # interpreter.py
 
-from lexer import ID, ASSIGN, INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF
+from lexer import (
+    ID,
+    ASSIGN,
+    INTEGER,
+    PLUS,
+    MINUS,
+    ASTERISK,
+    SLASH,
+    LPAREN,
+    RPAREN,
+    EOF,
+    IF,
+    THEN,
+    END,
+    EQ,
+    NE,
+    LT,
+    GT,
+    LTE,
+    GTE,
+)
 
 
 class Interpreter:
@@ -23,15 +43,62 @@ class Interpreter:
         return self.statement()
 
     def statement(self):
-        """文の解析"""
-        if self.current_token.type == ID:
-            # 次のトークンを覗き見して '=' かどうかを判断
-            if self.lexer.peek().type == ASSIGN:
-                return self.assignment_statement()
-            else:
-                return self.expr()
+        """文の解析（司令塔）"""
+        if self.current_token.type == IF:
+            return self.if_statement()
+        elif self.current_token.type == ID and self.lexer.peek() == "=":
+            return self.assignment_statement()
         else:
-            return self.expr()
+            return self.comparison()  # ただの式ではなく、比較式の可能性もある
+
+    def if_statement(self):
+        """if文の解析: IF comparison THEN statement END"""
+        self.eat(IF)
+        condition = self.comparison()
+        self.eat(THEN)
+
+        result = None
+        # 条件が True の場合のみ、中の文を実行する
+        if condition:
+            result = self.statement()
+        else:
+            # 条件が False の場合、END トークンまでスキップする
+            # 注：この実装はまだ入れ子のif文を正しく扱いません
+            nesting_level = 0
+            while not (self.current_token.type == END and nesting_level == 0):
+                if self.current_token.type == IF:
+                    nesting_level += 1
+                elif self.current_token.type == END:
+                    nesting_level -= 1
+                self.current_token = self.lexer.get_next_token()
+
+        self.eat(END)
+        return result
+
+    def comparison(self):
+        """比較式の解析: expr (comp_op expr)?"""
+        result = self.expr()
+
+        op_types = (EQ, NE, LT, GT, LTE, GTE)
+        if self.current_token.type in op_types:
+            op = self.current_token
+            self.eat(op.type)
+            right = self.expr()
+
+            if op.type == EQ:
+                return result == right
+            if op.type == NE:
+                return result != right
+            if op.type == LT:
+                return result < right
+            if op.type == GT:
+                return result > right
+            if op.type == LTE:
+                return result <= right
+            if op.type == GTE:
+                return result >= right
+
+        return result
 
     def assignment_statement(self):
         """代入文の解析: ID ASSIGN expr"""
