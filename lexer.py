@@ -1,6 +1,10 @@
 # lexer.py
 
 # --- トークンの種類を定義 ---
+# 予約語
+IF, THEN, END = "IF", "THEN", "END"
+
+# 演算子
 ASSIGN, ID = "ASSIGN", "ID"
 INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF = (
     "INTEGER",
@@ -12,6 +16,8 @@ INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF = (
     "RPAREN",
     "EOF",
 )
+# 比較演算子
+EQ, NE, LT, GT, LTE, GTE = "EQ", "NE", "LT", "GT", "LTE", "GTE"
 
 
 # --- トークンを表現するクラス ---
@@ -27,6 +33,12 @@ class Token:
 
 # --- Lexer本体のクラス ---
 # lexer.py の Lexer クラス部分
+
+RESERVED_KEYWORDS = {
+    "if": Token(IF, "if"),
+    "then": Token(THEN, "then"),
+    "end": Token(END, "end"),
+}
 
 
 class Lexer:
@@ -52,27 +64,28 @@ class Lexer:
         return int(result)
 
     def _id(self):
-        """英数字からなる識別子を読み取る"""
+        """英数字からなる識別子（または予約語）を読み取る"""
         result = ""
         while self.current_char is not None and self.current_char.isalnum():
             result += self.current_char
             self.advance()
 
-        return Token(ID, result)
+        # 読み取った単語が予約語なら予約語トークンを、そうでなければIDトークンを返す
+        return RESERVED_KEYWORDS.get(result.lower(), Token(ID, result))
 
     def peek(self):
         """次のトークンを覗き見する"""
         # 現在の状態を保存
         original_pos = self.pos
         original_current_char = self.current_char
-        
+
         # 次のトークンを取得
         token = self.get_next_token()
-        
+
         # 状態を元に戻す
         self.pos = original_pos
         self.current_char = original_current_char
-        
+
         return token
 
     def get_next_token(self):
@@ -90,6 +103,34 @@ class Lexer:
                 # 数字を見つけたら、integer()メソッドを呼び出す
                 value = self.integer()
                 return Token(INTEGER, value)
+
+            if self.current_char == "=" and self.peek().value == "=":
+                self.advance()
+                self.advance()
+                return Token(EQ, "==")
+
+            if self.current_char == "!" and self.peek().value == "=":
+                self.advance()
+                self.advance()
+                return Token(NE, "!=")
+
+            if self.current_char == "<" and self.peek().value == "=":
+                self.advance()
+                self.advance()
+                return Token(LTE, "<=")
+
+            if self.current_char == ">" and self.peek().value == "=":
+                self.advance()
+                self.advance()
+                return Token(GTE, ">=")
+
+            if self.current_char == "<":
+                self.advance()
+                return Token(LT, "<")
+
+            if self.current_char == ">":
+                self.advance()
+                return Token(GT, ">")
 
             if self.current_char == "=":
                 # '=' は代入演算子とみなす
