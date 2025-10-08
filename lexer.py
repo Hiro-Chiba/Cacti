@@ -33,47 +33,58 @@ class Lexer:
         self.current_char = self.text[self.pos] if self.text else None
 
     def advance(self):
-        """ポインタを一つ進めて、current_charを更新する"""
+        # (このメソッドは変更なし)
         self.pos += 1
         if self.pos > len(self.text) - 1:
-            self.current_char = None  # 文字列の終端
+            self.current_char = None
         else:
             self.current_char = self.text[self.pos]
+
+    # --- ▼▼▼ ここから追加・変更 ▼▼▼ ---
+
+    def integer(self):
+        """複数桁の整数を読み進めて、その数値を返す"""
+        result = ''
+        while self.current_char is not None and self.current_char.isdigit():
+            result += self.current_char
+            self.advance()
+        return int(result)
 
     def get_next_token(self):
         """textの中から次のトークンを見つけて返す"""
         while self.current_char is not None:
+            
             if self.current_char.isspace():
-                # 現在の文字が空白の場合、スキップする
                 self.advance()
                 continue
+            
+            # --- ここからが新しいロジック ---
+            if self.current_char.isdigit():
+                # 数字を見つけたら、integer()メソッドを呼び出す
+                value = self.integer()
+                return Token(INTEGER, value)
+            # --- ここまでが新しいロジック ---
 
-            if self.current_char == "+":
-                # '+' を見つけたら、PLUSトークンを生成して返す
+            if self.current_char == '+':
                 token = Token(PLUS, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == "-":
-                # '-' を見つけたら、MINUSトークンを生成して返す
+            if self.current_char == '-':
                 token = Token(MINUS, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == "*":
-                # '*' を見つけたら、ASTERISKトークンを生成して返す
+            if self.current_char == '*':
                 token = Token(ASTERISK, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == "/":
-                # '/' を見つけたら、SLASHトークンを生成して返す
+            if self.current_char == '/':
                 token = Token(SLASH, self.current_char)
                 self.advance()
                 return token
 
-            # 上のどの条件にも当てはまらない文字が見つかった場合
             raise Exception(f"不正な文字です: '{self.current_char}'")
 
-        # ループが終了した場合（文字列の最後まで読み終わった場合）
         return Token(EOF, None)
