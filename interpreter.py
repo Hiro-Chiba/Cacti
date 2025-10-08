@@ -1,6 +1,6 @@
 # interpreter.py
 
-from lexer import INTEGER, PLUS, MINUS, ASTERISK, SLASH, EOF
+from lexer import INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF
 
 
 class Interpreter:
@@ -16,13 +16,19 @@ class Interpreter:
                 f"構文エラー: 期待していたトークンは {token_type}, 実際は {self.current_token.type}"
             )
 
-
     def factor(self):
-        """factor : INTEGER"""
-        # 現状、因子は整数のみ
+        """factor : INTEGER | LPAREN expr RPAREN"""
         token = self.current_token
-        self.eat(INTEGER)
-        return token.value
+        if token.type == INTEGER:
+            self.eat(INTEGER)
+            return token.value
+        elif token.type == LPAREN:
+            self.eat(LPAREN)
+            # 括弧の中は、再び expr() で評価する
+            result = self.expr()
+            # 最後に閉じ括弧があるはず
+            self.eat(RPAREN)
+            return result
 
     def term(self):
         """term : factor ((ASTERISK | SLASH) factor)*"""

@@ -1,13 +1,8 @@
 # lexer.py
 
 # --- トークンの種類を定義 ---
-INTEGER, PLUS, MINUS, ASTERISK, SLASH, EOF = (
-    "INTEGER",
-    "PLUS",
-    "MINUS",
-    "ASTERISK",
-    "SLASH",
-    "EOF",
+INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF = (
+    'INTEGER', 'PLUS', 'MINUS', 'ASTERISK', 'SLASH', 'LPAREN', 'RPAREN', 'EOF'
 )
 
 
@@ -40,7 +35,6 @@ class Lexer:
         else:
             self.current_char = self.text[self.pos]
 
-    # --- ▼▼▼ ここから追加・変更 ▼▼▼ ---
 
     def integer(self):
         """複数桁の整数を読み進めて、その数値を返す"""
@@ -58,12 +52,20 @@ class Lexer:
                 self.advance()
                 continue
             
-            # --- ここからが新しいロジック ---
             if self.current_char.isdigit():
                 # 数字を見つけたら、integer()メソッドを呼び出す
                 value = self.integer()
                 return Token(INTEGER, value)
-            # --- ここまでが新しいロジック ---
+
+            if self.current_char == '(':
+                token = Token(LPAREN, self.current_char)
+                self.advance()
+                return token
+
+            if self.current_char == ')':
+                token = Token(RPAREN, self.current_char)
+                self.advance()
+                return token
 
             if self.current_char == '+':
                 token = Token(PLUS, self.current_char)
