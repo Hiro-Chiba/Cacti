@@ -1,22 +1,19 @@
 # main.py
 
-from lexer import Lexer
-from interpreter import Interpreter
+from lexer import Lexer, Token, EOF
+
 
 def main():
-    while True:
-        try:
-            # ターミナルから計算式を読み込む
-            text = input('Cacti > ')
-        except EOFError:
-            break
-        if not text:
-            continue
+    input_text = " a = 10 * (5 + b) "
+    lexer = Lexer(input_text)
 
-        lexer = Lexer(text)
-        interpreter = Interpreter(lexer)
-        result = interpreter.expr()
-        print(result)
+    token = lexer.get_next_token()
+    while token.type != EOF:
+        print(token)
+        token = lexer.get_next_token()
 
-if __name__ == '__main__':
+    print(token)
+
+
+if __name__ == "__main__":
     main()

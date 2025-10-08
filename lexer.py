@@ -1,8 +1,16 @@
 # lexer.py
 
 # --- トークンの種類を定義 ---
+ASSIGN, ID = "ASSIGN", "ID"
 INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF = (
-    'INTEGER', 'PLUS', 'MINUS', 'ASTERISK', 'SLASH', 'LPAREN', 'RPAREN', 'EOF'
+    "INTEGER",
+    "PLUS",
+    "MINUS",
+    "ASTERISK",
+    "SLASH",
+    "LPAREN",
+    "RPAREN",
+    "EOF",
 )
 
 
@@ -35,54 +43,71 @@ class Lexer:
         else:
             self.current_char = self.text[self.pos]
 
-
     def integer(self):
         """複数桁の整数を読み進めて、その数値を返す"""
-        result = ''
+        result = ""
         while self.current_char is not None and self.current_char.isdigit():
             result += self.current_char
             self.advance()
         return int(result)
 
+    def _id(self):
+        """英数字からなる識別子を読み取る"""
+        result = ""
+        while self.current_char is not None and self.current_char.isalnum():
+            result += self.current_char
+            self.advance()
+
+        return Token(ID, result)
+
     def get_next_token(self):
         """textの中から次のトークンを見つけて返す"""
         while self.current_char is not None:
-            
             if self.current_char.isspace():
                 self.advance()
                 continue
-            
+
+            if self.current_char.isalpha():
+                # 文字で始まる場合は変数名とみなす
+                return self._id()
+
             if self.current_char.isdigit():
                 # 数字を見つけたら、integer()メソッドを呼び出す
                 value = self.integer()
                 return Token(INTEGER, value)
 
-            if self.current_char == '(':
+            if self.current_char == "=":
+                # '=' は代入演算子とみなす
+                token = Token(ASSIGN, self.current_char)
+                self.advance()
+                return token
+
+            if self.current_char == "(":
                 token = Token(LPAREN, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == ')':
+            if self.current_char == ")":
                 token = Token(RPAREN, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == '+':
+            if self.current_char == "+":
                 token = Token(PLUS, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == '-':
+            if self.current_char == "-":
                 token = Token(MINUS, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == '*':
+            if self.current_char == "*":
                 token = Token(ASTERISK, self.current_char)
                 self.advance()
                 return token
 
-            if self.current_char == '/':
+            if self.current_char == "/":
                 token = Token(SLASH, self.current_char)
                 self.advance()
                 return token
