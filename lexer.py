@@ -60,6 +60,21 @@ class Lexer:
 
         return Token(ID, result)
 
+    def peek(self):
+        """次のトークンを覗き見する"""
+        # 現在の状態を保存
+        original_pos = self.pos
+        original_current_char = self.current_char
+        
+        # 次のトークンを取得
+        token = self.get_next_token()
+        
+        # 状態を元に戻す
+        self.pos = original_pos
+        self.current_char = original_current_char
+        
+        return token
+
     def get_next_token(self):
         """textの中から次のトークンを見つけて返す"""
         while self.current_char is not None:
