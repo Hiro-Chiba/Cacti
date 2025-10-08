@@ -1,19 +1,22 @@
 # main.py
 
-from lexer import Lexer, Token, EOF
+from lexer import Lexer
+from interpreter import Interpreter
 
 def main():
-    # テストする文字列を数字入りのものに変更
-    input_text = "  123 + 50 * 2 - 8 / 4  "
-    lexer = Lexer(input_text)
+    while True:
+        try:
+            # ターミナルから計算式を読み込む
+            text = input('Cacti > ')
+        except EOFError:
+            break
+        if not text:
+            continue
 
-    # (ここから下のロジックは変更なし)
-    token = lexer.get_next_token()
-    while token.type != EOF:
-        print(token)
-        token = lexer.get_next_token()
-    
-    print(token)
+        lexer = Lexer(text)
+        interpreter = Interpreter(lexer)
+        result = interpreter.expr()
+        print(result)
 
 if __name__ == '__main__':
     main()
