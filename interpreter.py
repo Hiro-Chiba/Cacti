@@ -18,11 +18,13 @@ from lexer import (
     MINUS,
     ASTERISK,
     SLASH,
+    IDIV,
     LPAREN,
     RPAREN,
     EOF,
     IF,
     THEN,
+    ELSE,
     PRINT,
     EQ,
     NE,
@@ -34,150 +36,135 @@ from lexer import (
 
 
 class Interpreter:
-    def __init__(self, lexer, symbol_table=None):
+    def __init__(self, lexer: Lexer, symbol_table=None):
         self.lexer = lexer
+        # 1トークン先読み体制
         self.current_token = self.lexer.get_next_token()
-        # 外部から渡されたsymbol_tableがあればそれを使う（記憶の引き継ぎ）
+        self.next_token = self.lexer.get_next_token()
+        # 外部から渡された symbol_table があれば引き継ぐ
         self.symbol_table = symbol_table if symbol_table is not None else {}
+
+    # トークン前進（current <- next, next <- next_next）
+    def _advance(self):
+        self.current_token = self.next_token
+        self.next_token = self.lexer.get_next_token()
 
     def eat(self, token_type):
         if self.current_token.type == token_type:
-            self.current_token = self.lexer.get_next_token()
+            self._advance()
         else:
             raise Exception(
-                f"構文エラー: 期待していたトークンは {token_type}, 実際は {self.current_token.type}"
+                f"構文エラー: 期待していたトークンは {token_type}, 実際は {self.current_token.type} @pos={self.lexer.token_start_pos}"
             )
 
+    # エントリポイント
     def program(self):
-        """プログラム全体の入口"""
         return self.statement_list()
 
     def statement_list(self):
-        """文リストの解析: statement (SEMI statement)*"""
-        # 最初の文を解析
         results = [self.statement()]
-
-        # セミコロンが続く限り、次の文を解析
         while self.current_token.type == SEMI:
             self.eat(SEMI)
+            # 末尾セミコロン許容（; EOF）のため、EOF なら抜ける
+            if self.current_token.type == EOF:
+                break
             results.append(self.statement())
-
-        # 対話モードのために最後の結果を返す
         return results[-1] if results else None
 
     def statement(self):
-        """文の解析（司令塔）"""
         if self.current_token.type == LOOP:
             return self.loop_statement()
         elif self.current_token.type == IF:
             return self.if_statement()
         elif self.current_token.type == PRINT:
             return self.print_statement()
-        elif self.current_token.type == ID and self.lexer.peek() == "=":
+        elif self.current_token.type == ID and self.next_token.type == ASSIGN:
             return self.assignment_statement()
         else:
             return self.comparison()
 
     def print_statement(self):
-        """print文の解析: PRINT expr"""
         self.eat(PRINT)
-        # PRINTの後ろの式を評価
         value = self.expr()
-        # 評価結果をコンソールに出力
         print(value)
-        # print文は値を返さない
         return None
 
-
     def loop_statement(self):
-        """loop文の解析"""
+        """loop i from A to B { ... } / loop N times { ... }"""
         self.eat(LOOP)
-        # 'loop i from 1 to 5' 形式
+        # 形式1: loop i from A to B
         if self.current_token.type == ID:
             var_name = self.current_token.value
             self.eat(ID)
             self.eat(FROM)
-            start_val = self.expr()
+            start_val = int(self.expr())
             self.eat(TO)
-            end_val = self.expr()
-            block_code = self.block()  # ブロックの中身を文字列として取得
-            # ループ実行
-            for i in range(int(start_val), int(end_val) + 1):
-                self.symbol_table[var_name] = i  # ループ変数を更新
-                # ブロックコードから新しいInterpreterを作って実行
+            end_val = int(self.expr())
+            block_code = self.block()
+
+            step = 1 if start_val <= end_val else -1
+            for i in range(start_val, end_val + step, step):
+                self.symbol_table[var_name] = i
                 sub_interpreter = Interpreter(Lexer(block_code), self.symbol_table)
                 sub_interpreter.program()
-                self.symbol_table.update(sub_interpreter.symbol_table)
-        # 'loop 5 times' 形式
+        # 形式2: loop N times
         else:
-            times = self.expr()
+            times = int(self.expr())
             self.eat(TIMES)
             block_code = self.block()
-            # ループ実行
-            for _ in range(int(times)):
+            for _ in range(times):
                 sub_interpreter = Interpreter(Lexer(block_code), self.symbol_table)
                 sub_interpreter.program()
-                self.symbol_table.update(sub_interpreter.symbol_table)
-        return None  # ループ文は値を返さない
+        return None
 
     def block(self):
-        """ブロックの解析: { statement_list } を文字列として切り出す"""
-        self.eat(LBRACE)  # Consume '{'
-
-        # ブロック内の最初のトークンの開始位置を取得
-        start_pos = self.lexer.token_start_pos
-
-        nesting_level = 1
-        while nesting_level > 0:
+        """{ statement_list } をテキストから丸ごと切り出して返す"""
+        self.eat(LBRACE)
+        start_pos = self.lexer.token_start_pos  # 最初の中身の開始位置
+        nesting = 1
+        while nesting > 0:
             if self.current_token.type == EOF:
                 raise Exception("構文エラー: ブロックが閉じられていません")
-
             if self.current_token.type == LBRACE:
-                nesting_level += 1
+                nesting += 1
             elif self.current_token.type == RBRACE:
-                nesting_level -= 1
+                nesting -= 1
+                if nesting == 0:
+                    end_pos = self.lexer.token_start_pos
+                    break
+            # 次のトークンへ
+            self._advance()
 
-            # マッチする閉じ括弧を見つけたらループを抜ける
-            if nesting_level == 0:
-                # この閉じ括弧の開始位置がブロックの終了位置
-                end_pos = self.lexer.token_start_pos
-                break
-
-            self.eat(self.current_token.type)
-
-        # テキストからブロックのコードを切り出す
         block_code = self.lexer.text[start_pos:end_pos]
-
-        self.eat(RBRACE)  # 最後の '}' を消費
-
+        self.eat(RBRACE)  # '}' を消費
         return block_code
 
     def if_statement(self):
-        """if文の解析: IF comparison THEN block"""
+        """if comparison then block (else block)?"""
         self.eat(IF)
         condition = self.comparison()
         self.eat(THEN)
-
-        block_code = self.block()  # ブロックの中身を文字列として取得
+        then_block = self.block()
+        else_block = None
+        if self.current_token.type == ELSE:
+            self.eat(ELSE)
+            else_block = self.block()
 
         if condition:
-            # 条件がTrueなら、ブロックコードから新しいInterpreterを作って実行
-            sub_interpreter = Interpreter(Lexer(block_code), self.symbol_table)
-            sub_interpreter.program()
-            self.symbol_table.update(sub_interpreter.symbol_table)
+            sub = Interpreter(Lexer(then_block), self.symbol_table)
+            sub.program()
+        elif else_block is not None:
+            sub = Interpreter(Lexer(else_block), self.symbol_table)
+            sub.program()
+        return None
 
-        return None  # if文は値を返さない
-
+    # 比較: expr (op expr)?
     def comparison(self):
-        """比較式の解析: expr (comp_op expr)?"""
         result = self.expr()
-
-        op_types = (EQ, NE, LT, GT, LTE, GTE)
-        if self.current_token.type in op_types:
+        if self.current_token.type in (EQ, NE, LT, GT, LTE, GTE):
             op = self.current_token
             self.eat(op.type)
             right = self.expr()
-
             if op.type == EQ:
                 return result == right
             if op.type == NE:
@@ -190,52 +177,60 @@ class Interpreter:
                 return result <= right
             if op.type == GTE:
                 return result >= right
-
         return result
 
     def assignment_statement(self):
-        """代入文の解析: ID ASSIGN expr"""
-        # 変数名を取得
+        # 左辺
         variable = self.current_token
         self.eat(ID)
-
-        # '=' を消費
+        # '='
         self.eat(ASSIGN)
-
-        # 右辺の式を評価
+        # 右辺
         value = self.expr()
-
-        # シンボルテーブルに変数を保存
         self.symbol_table[variable.value] = value
-        # 代入文は値を返さない（Noneを返す）
         return None
 
+    # --- 式パーサ ---
     def factor(self):
-        """factor : INTEGER | STRING | LPAREN expr RPAREN | ID"""
+        """factor : ('+'|'-') factor | INTEGER | STRING | LPAREN expr RPAREN | ID"""
         token = self.current_token
+
+        # 単項演算子
+        if token.type == PLUS:
+            self.eat(PLUS)
+            return +self.factor()
+        if token.type == MINUS:
+            self.eat(MINUS)
+            return -self.factor()
+
         if token.type == INTEGER:
+            val = token.value
             self.eat(INTEGER)
-            return token.value
-        elif token.type == STRING:  # このelifを追加
+            return val
+        elif token.type == STRING:
+            val = token.value
             self.eat(STRING)
-            return token.value
+            return val
         elif token.type == LPAREN:
             self.eat(LPAREN)
             result = self.expr()
             self.eat(RPAREN)
             return result
         elif token.type == ID:
+            name = token.value
             self.eat(ID)
-            var_name = token.value
-            value = self.symbol_table.get(var_name)
-            if value is None:
-                raise NameError(f"エラー: 変数 '{var_name}' は定義されていません")
-            else:
-                return value
+            if name not in self.symbol_table:
+                raise NameError(f"エラー: 変数 '{name}' は定義されていません")
+            return self.symbol_table[name]
+        else:
+            raise Exception(
+                f"構文エラー: 不正な因子 {token.type} @pos={self.lexer.token_start_pos}"
+            )
 
     def term(self):
+        """term : factor (('*' | '/' | '//') factor)*"""
         result = self.factor()
-        while self.current_token.type in (ASTERISK, SLASH):
+        while self.current_token.type in (ASTERISK, SLASH, IDIV):
             op = self.current_token
             if op.type == ASTERISK:
                 self.eat(ASTERISK)
@@ -246,15 +241,32 @@ class Interpreter:
                 if divisor == 0:
                     raise Exception("エラー: 0で割ることはできません")
                 result = result / divisor
+            elif op.type == IDIV:
+                self.eat(IDIV)
+                divisor = self.factor()
+                if divisor == 0:
+                    raise Exception("エラー: 0で割ることはできません")
+                result = result // divisor
         return result
 
+    def _safe_add(self, a, b):
+        # 文字列同士/数値同士のみ許可
+        if isinstance(a, str) and isinstance(b, str):
+            return a + b
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+            return a + b
+        raise TypeError(
+            "エラー: 文字列と数値の加算はできません（明示的に str() などで変換してください）"
+        )
+
     def expr(self):
+        """expr : term (('+' | '-') term)*"""
         result = self.term()
         while self.current_token.type in (PLUS, MINUS):
             op = self.current_token
             if op.type == PLUS:
                 self.eat(PLUS)
-                result = result + self.term()
+                result = self._safe_add(result, self.term())
             elif op.type == MINUS:
                 self.eat(MINUS)
                 result = result - self.term()

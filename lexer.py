@@ -3,25 +3,27 @@
 # --- トークンの種類を定義 ---
 # 予約語
 LOOP, TIMES, FROM, TO = "LOOP", "TIMES", "FROM", "TO"
-IF, THEN = "IF", "THEN"
+IF, THEN, ELSE = "IF", "THEN", "ELSE"
 PRINT = "PRINT"
 
 # ブロックと文の区切り
 LBRACE, RBRACE, SEMI = "LBRACE", "RBRACE", "SEMI"
 
-# 演算子
+# 演算子・終端
 ASSIGN, ID = "ASSIGN", "ID"
-INTEGER, PLUS, MINUS, ASTERISK, SLASH, LPAREN, RPAREN, EOF = (
+INTEGER, PLUS, MINUS, ASTERISK, SLASH, IDIV, LPAREN, RPAREN, EOF = (
     "INTEGER",
     "PLUS",
     "MINUS",
     "ASTERISK",
     "SLASH",
+    "IDIV",  # 整数除算 //
     "LPAREN",
     "RPAREN",
     "EOF",
 )
 STRING = "STRING"
+
 # 比較演算子
 EQ, NE, LT, GT, LTE, GTE = "EQ", "NE", "LT", "GT", "LTE", "GTE"
 
@@ -29,17 +31,16 @@ EQ, NE, LT, GT, LTE, GTE = "EQ", "NE", "LT", "GT", "LTE", "GTE"
 # --- トークンを表現するクラス ---
 class Token:
     def __init__(self, type, value):
-        self.type = type  # トークンの種類 (INTEGER, PLUSなど)
-        self.value = value  # トークンの値 (10, '+'など)
+        self.type = type
+        self.value = value
 
     def __str__(self):
-        # print(token) とした時に見やすくするメソッド
         return f"Token({self.type}, {repr(self.value)})"
 
+    __repr__ = __str__
 
-# --- Lexer本体のクラス ---
-# lexer.py の Lexer クラス部分
 
+# 予約語テーブル
 RESERVED_KEYWORDS = {
     "loop": Token(LOOP, "loop"),
     "times": Token(TIMES, "times"),
@@ -47,27 +48,43 @@ RESERVED_KEYWORDS = {
     "to": Token(TO, "to"),
     "if": Token(IF, "if"),
     "then": Token(THEN, "then"),
+    "else": Token(ELSE, "else"),
     "print": Token(PRINT, "print"),
 }
 
 
 class Lexer:
-    def __init__(self, text):
+    def __init__(self, text: str):
         self.text = text
         self.pos = 0
         self.current_char = self.text[self.pos] if self.text else None
-        self.token_start_pos = 0
+        self.token_start_pos = 0  # 例外時に位置のヒントを出すため
 
+    # --- 低レベル移動 ---
     def advance(self):
-        # (このメソッドは変更なし)
         self.pos += 1
         if self.pos > len(self.text) - 1:
             self.current_char = None
         else:
             self.current_char = self.text[self.pos]
 
+    def peek(self):
+        peek_pos = self.pos + 1
+        if peek_pos > len(self.text) - 1:
+            return None
+        return self.text[peek_pos]
+
+    # --- ユーティリティ ---
+    def skip_whitespace(self):
+        while self.current_char is not None and self.current_char.isspace():
+            self.advance()
+
+    def skip_line_comment(self):
+        # 現在位置は '#' の直後を想定
+        while self.current_char is not None and self.current_char != "\n":
+            self.advance()
+
     def integer(self):
-        """複数桁の整数を読み進めて、その数値を返す"""
         result = ""
         while self.current_char is not None and self.current_char.isdigit():
             result += self.current_char
@@ -75,129 +92,135 @@ class Lexer:
         return int(result)
 
     def string(self):
-        """ダブルクォーテーションで囲まれた文字列を読み取る"""
+        # 先頭の " は呼び出し側で確認済み
         result = ""
         self.advance()  # 開始の " をスキップ
         while self.current_char is not None and self.current_char != '"':
             result += self.current_char
             self.advance()
+        if self.current_char != '"':
+            raise Exception("字句エラー: 文字列が閉じられていません")
         self.advance()  # 終了の " をスキップ
         return result
 
     def _id(self):
-        """英数字からなる識別子（または予約語）を読み取る"""
+        # 先頭: 英字またはアンダースコア
         result = ""
-        while self.current_char is not None and self.current_char.isalnum():
+        if self.current_char is not None and (
+            self.current_char.isalpha() or self.current_char == "_"
+        ):
+            result += self.current_char
+            self.advance()
+        else:
+            raise Exception("字句エラー: 不正な識別子の開始文字")
+
+        # 続き: 英数字またはアンダースコア
+        while self.current_char is not None and (
+            self.current_char.isalnum() or self.current_char == "_"
+        ):
             result += self.current_char
             self.advance()
 
-        # 読み取った単語が予約語なら予約語トークンを、そうでなければIDトークンを返す
         return RESERVED_KEYWORDS.get(result.lower(), Token(ID, result))
 
-    def peek(self):
-        """現在のポインタを進めずに、次の文字を1つだけ覗き見る"""
-        peek_pos = self.pos + 1
-        if peek_pos > len(self.text) - 1:
-            return None  # 文字列の終端なら何もない
-        else:
-            return self.text[peek_pos]
-
+    # --- メイン: 次トークンを返す ---
     def get_next_token(self):
-        """textの中から次のトークンを見つけて返す"""
         while self.current_char is not None:
             self.token_start_pos = self.pos
+
+            # 空白スキップ
             if self.current_char.isspace():
-                self.advance()
+                self.skip_whitespace()
                 continue
 
-            if self.current_char.isalpha():
-                # 文字で始まる場合は変数名とみなす
+            # 行コメント（# 〜 改行）
+            if self.current_char == "#":
+                self.advance()
+                self.skip_line_comment()
+                continue
+
+            # 予約語/識別子
+            if self.current_char.isalpha() or self.current_char == "_":
                 return self._id()
 
+            # 整数
             if self.current_char.isdigit():
-                # 数字を見つけたら、integer()メソッドを呼び出す
                 value = self.integer()
                 return Token(INTEGER, value)
 
+            # 文字列
             if self.current_char == '"':
                 return Token(STRING, self.string())
 
+            # 括弧・ブロック・区切り
             if self.current_char == "{":
                 self.advance()
                 return Token(LBRACE, "{")
-
             if self.current_char == "}":
                 self.advance()
                 return Token(RBRACE, "}")
-
             if self.current_char == ";":
                 self.advance()
                 return Token(SEMI, ";")
+            if self.current_char == "(":
+                self.advance()
+                return Token(LPAREN, "(")
+            if self.current_char == ")":
+                self.advance()
+                return Token(RPAREN, ")")
 
+            # 比較演算子（2文字優先）
             if self.current_char == "=" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(EQ, "==")
-
             if self.current_char == "!" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(NE, "!=")
-
             if self.current_char == "<" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(LTE, "<=")
-
             if self.current_char == ">" and self.peek() == "=":
                 self.advance()
                 self.advance()
                 return Token(GTE, ">=")
 
+            # 単文字の比較
             if self.current_char == "<":
                 self.advance()
                 return Token(LT, "<")
-
             if self.current_char == ">":
                 self.advance()
                 return Token(GT, ">")
 
+            # 代入
             if self.current_char == "=":
-                # '=' は代入演算子とみなす
-                token = Token(ASSIGN, self.current_char)
                 self.advance()
-                return token
+                return Token(ASSIGN, "=")
 
-            if self.current_char == "(":
-                token = Token(LPAREN, self.current_char)
-                self.advance()
-                return token
-
-            if self.current_char == ")":
-                token = Token(RPAREN, self.current_char)
-                self.advance()
-                return token
-
+            # 算術
             if self.current_char == "+":
-                token = Token(PLUS, self.current_char)
                 self.advance()
-                return token
-
+                return Token(PLUS, "+")
             if self.current_char == "-":
-                token = Token(MINUS, self.current_char)
                 self.advance()
-                return token
-
+                return Token(MINUS, "-")
             if self.current_char == "*":
-                token = Token(ASTERISK, self.current_char)
                 self.advance()
-                return token
-
+                return Token(ASTERISK, "*")
+            # 整数除算 //（2文字優先）
+            if self.current_char == "/" and self.peek() == "/":
+                self.advance()
+                self.advance()
+                return Token(IDIV, "//")
             if self.current_char == "/":
-                token = Token(SLASH, self.current_char)
                 self.advance()
-                return token
+                return Token(SLASH, "/")
 
-            raise Exception(f"不正な文字です: '{self.current_char}'")
+            raise Exception(
+                f"字句エラー: 不正な文字 '{self.current_char}' @pos={self.pos}"
+            )
 
         return Token(EOF, None)
