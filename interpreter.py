@@ -23,6 +23,7 @@ from lexer import (
     EOF,
     IF,
     THEN,
+    PRINT,
     EQ,
     NE,
     LT,
@@ -70,10 +71,22 @@ class Interpreter:
             return self.loop_statement()
         elif self.current_token.type == IF:
             return self.if_statement()
+        elif self.current_token.type == PRINT:
+            return self.print_statement()
         elif self.current_token.type == ID and self.lexer.peek() == "=":
             return self.assignment_statement()
         else:
             return self.comparison()
+
+    def print_statement(self):
+        """print文の解析: PRINT expr"""
+        self.eat(PRINT)
+        # PRINTの後ろの式を評価
+        value = self.expr()
+        # 評価結果をコンソールに出力
+        print(value)
+        # print文は値を返さない
+        return None
 
 
     def loop_statement(self):

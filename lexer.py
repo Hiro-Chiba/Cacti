@@ -4,6 +4,7 @@
 # 予約語
 LOOP, TIMES, FROM, TO = "LOOP", "TIMES", "FROM", "TO"
 IF, THEN = "IF", "THEN"
+PRINT = "PRINT"
 
 # ブロックと文の区切り
 LBRACE, RBRACE, SEMI = "LBRACE", "RBRACE", "SEMI"
@@ -46,6 +47,7 @@ RESERVED_KEYWORDS = {
     "to": Token(TO, "to"),
     "if": Token(IF, "if"),
     "then": Token(THEN, "then"),
+    "print": Token(PRINT, "print"),
 }
 
 
