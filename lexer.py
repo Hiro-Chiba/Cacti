@@ -54,6 +54,7 @@ class Lexer:
         self.text = text
         self.pos = 0
         self.current_char = self.text[self.pos] if self.text else None
+        self.token_start_pos = 0
 
     def advance(self):
         # (このメソッドは変更なし)
@@ -102,6 +103,7 @@ class Lexer:
     def get_next_token(self):
         """textの中から次のトークンを見つけて返す"""
         while self.current_char is not None:
+            self.token_start_pos = self.pos
             if self.current_char.isspace():
                 self.advance()
                 continue

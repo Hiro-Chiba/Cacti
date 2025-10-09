@@ -1,6 +1,16 @@
 # interpreter.py
 
 from lexer import (
+    Lexer,
+    Token,
+    STRING,
+    LOOP,
+    TIMES,
+    FROM,
+    TO,
+    LBRACE,
+    RBRACE,
+    SEMI,
     ID,
     ASSIGN,
     INTEGER,
@@ -13,7 +23,6 @@ from lexer import (
     EOF,
     IF,
     THEN,
-    END,
     EQ,
     NE,
     LT,
@@ -24,10 +33,11 @@ from lexer import (
 
 
 class Interpreter:
-    def __init__(self, lexer):
+    def __init__(self, lexer, symbol_table=None):
         self.lexer = lexer
         self.current_token = self.lexer.get_next_token()
-        self.symbol_table = {}
+        # 外部から渡されたsymbol_tableがあればそれを使う（記憶の引き継ぎ）
+        self.symbol_table = symbol_table if symbol_table is not None else {}
 
     def eat(self, token_type):
         if self.current_token.type == token_type:
@@ -39,41 +49,111 @@ class Interpreter:
 
     def program(self):
         """プログラム全体の入口"""
-        # 文の解析と実行
-        return self.statement()
+        return self.statement_list()
+
+    def statement_list(self):
+        """文リストの解析: statement (SEMI statement)*"""
+        # 最初の文を解析
+        results = [self.statement()]
+
+        # セミコロンが続く限り、次の文を解析
+        while self.current_token.type == SEMI:
+            self.eat(SEMI)
+            results.append(self.statement())
+
+        # 対話モードのために最後の結果を返す
+        return results[-1] if results else None
 
     def statement(self):
         """文の解析（司令塔）"""
-        if self.current_token.type == IF:
+        if self.current_token.type == LOOP:
+            return self.loop_statement()
+        elif self.current_token.type == IF:
             return self.if_statement()
         elif self.current_token.type == ID and self.lexer.peek() == "=":
             return self.assignment_statement()
         else:
-            return self.comparison()  # ただの式ではなく、比較式の可能性もある
+            return self.comparison()
+
+
+    def loop_statement(self):
+        """loop文の解析"""
+        self.eat(LOOP)
+        # 'loop i from 1 to 5' 形式
+        if self.current_token.type == ID:
+            var_name = self.current_token.value
+            self.eat(ID)
+            self.eat(FROM)
+            start_val = self.expr()
+            self.eat(TO)
+            end_val = self.expr()
+            block_code = self.block()  # ブロックの中身を文字列として取得
+            # ループ実行
+            for i in range(int(start_val), int(end_val) + 1):
+                self.symbol_table[var_name] = i  # ループ変数を更新
+                # ブロックコードから新しいInterpreterを作って実行
+                sub_interpreter = Interpreter(Lexer(block_code), self.symbol_table)
+                sub_interpreter.program()
+                self.symbol_table.update(sub_interpreter.symbol_table)
+        # 'loop 5 times' 形式
+        else:
+            times = self.expr()
+            self.eat(TIMES)
+            block_code = self.block()
+            # ループ実行
+            for _ in range(int(times)):
+                sub_interpreter = Interpreter(Lexer(block_code), self.symbol_table)
+                sub_interpreter.program()
+                self.symbol_table.update(sub_interpreter.symbol_table)
+        return None  # ループ文は値を返さない
+
+    def block(self):
+        """ブロックの解析: { statement_list } を文字列として切り出す"""
+        self.eat(LBRACE)  # Consume '{'
+
+        # ブロック内の最初のトークンの開始位置を取得
+        start_pos = self.lexer.token_start_pos
+
+        nesting_level = 1
+        while nesting_level > 0:
+            if self.current_token.type == EOF:
+                raise Exception("構文エラー: ブロックが閉じられていません")
+
+            if self.current_token.type == LBRACE:
+                nesting_level += 1
+            elif self.current_token.type == RBRACE:
+                nesting_level -= 1
+
+            # マッチする閉じ括弧を見つけたらループを抜ける
+            if nesting_level == 0:
+                # この閉じ括弧の開始位置がブロックの終了位置
+                end_pos = self.lexer.token_start_pos
+                break
+
+            self.eat(self.current_token.type)
+
+        # テキストからブロックのコードを切り出す
+        block_code = self.lexer.text[start_pos:end_pos]
+
+        self.eat(RBRACE)  # 最後の '}' を消費
+
+        return block_code
 
     def if_statement(self):
-        """if文の解析: IF comparison THEN statement END"""
+        """if文の解析: IF comparison THEN block"""
         self.eat(IF)
         condition = self.comparison()
         self.eat(THEN)
 
-        result = None
-        # 条件が True の場合のみ、中の文を実行する
-        if condition:
-            result = self.statement()
-        else:
-            # 条件が False の場合、END トークンまでスキップする
-            # 注：この実装はまだ入れ子のif文を正しく扱いません
-            nesting_level = 0
-            while not (self.current_token.type == END and nesting_level == 0):
-                if self.current_token.type == IF:
-                    nesting_level += 1
-                elif self.current_token.type == END:
-                    nesting_level -= 1
-                self.current_token = self.lexer.get_next_token()
+        block_code = self.block()  # ブロックの中身を文字列として取得
 
-        self.eat(END)
-        return result
+        if condition:
+            # 条件がTrueなら、ブロックコードから新しいInterpreterを作って実行
+            sub_interpreter = Interpreter(Lexer(block_code), self.symbol_table)
+            sub_interpreter.program()
+            self.symbol_table.update(sub_interpreter.symbol_table)
+
+        return None  # if文は値を返さない
 
     def comparison(self):
         """比較式の解析: expr (comp_op expr)?"""
@@ -118,10 +198,13 @@ class Interpreter:
         return None
 
     def factor(self):
-        """factor : INTEGER | LPAREN expr RPAREN | ID"""
+        """factor : INTEGER | STRING | LPAREN expr RPAREN | ID"""
         token = self.current_token
         if token.type == INTEGER:
             self.eat(INTEGER)
+            return token.value
+        elif token.type == STRING:  # このelifを追加
+            self.eat(STRING)
             return token.value
         elif token.type == LPAREN:
             self.eat(LPAREN)
@@ -131,7 +214,6 @@ class Interpreter:
         elif token.type == ID:
             self.eat(ID)
             var_name = token.value
-            # シンボルテーブルから値を取得
             value = self.symbol_table.get(var_name)
             if value is None:
                 raise NameError(f"エラー: 変数 '{var_name}' は定義されていません")

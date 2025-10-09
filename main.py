@@ -1,24 +1,32 @@
 # main.py
 
-from lexer import Lexer, Token, EOF
+from lexer import Lexer
+from interpreter import Interpreter
+
 
 def main():
-    input_text = """
-    loop i from 1 to 5 {
-        a = a + i;
-    }
-    loop 3 times {
-        b = "hello";
-    }
-    """
-    lexer = Lexer(input_text)
+    # グローバルなシンボルテーブル（記憶領域）を用意
+    global_symbol_table = {}
 
-    token = lexer.get_next_token()
-    while token.type != EOF:
-        print(token)
-        token = lexer.get_next_token()
-    
-    print(token)
+    while True:
+        try:
+            text = input("Cacti > ")
+        except EOFError:
+            break
+        if not text:
+            continue
 
-if __name__ == '__main__':
+        lexer = Lexer(text)
+        # 実行のたびに、グローバルな記憶領域を渡してあげる
+        interpreter = Interpreter(lexer, global_symbol_table)
+
+        try:
+            result = interpreter.program()
+            if result is not None:
+                print(result)
+        except Exception as e:
+            print(e)
+
+
+if __name__ == "__main__":
     main()
