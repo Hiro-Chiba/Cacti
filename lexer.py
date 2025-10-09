@@ -2,7 +2,11 @@
 
 # --- トークンの種類を定義 ---
 # 予約語
-IF, THEN, END = "IF", "THEN", "END"
+LOOP, TIMES, FROM, TO = "LOOP", "TIMES", "FROM", "TO"
+IF, THEN = "IF", "THEN"
+
+# ブロックと文の区切り
+LBRACE, RBRACE, SEMI = "LBRACE", "RBRACE", "SEMI"
 
 # 演算子
 ASSIGN, ID = "ASSIGN", "ID"
@@ -36,9 +40,12 @@ class Token:
 # lexer.py の Lexer クラス部分
 
 RESERVED_KEYWORDS = {
+    "loop": Token(LOOP, "loop"),
+    "times": Token(TIMES, "times"),
+    "from": Token(FROM, "from"),
+    "to": Token(TO, "to"),
     "if": Token(IF, "if"),
     "then": Token(THEN, "then"),
-    "end": Token(END, "end"),
 }
 
 
@@ -110,6 +117,18 @@ class Lexer:
 
             if self.current_char == '"':
                 return Token(STRING, self.string())
+
+            if self.current_char == "{":
+                self.advance()
+                return Token(LBRACE, "{")
+
+            if self.current_char == "}":
+                self.advance()
+                return Token(RBRACE, "}")
+
+            if self.current_char == ";":
+                self.advance()
+                return Token(SEMI, ";")
 
             if self.current_char == "=" and self.peek() == "=":
                 self.advance()

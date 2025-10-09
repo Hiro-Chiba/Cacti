@@ -1,32 +1,24 @@
 # main.py
 
-from lexer import Lexer
-from interpreter import Interpreter
-
+from lexer import Lexer, Token, EOF
 
 def main():
-    # Interpreterを一度だけ作成し、記憶を保持させる
-    lexer = Lexer("")
-    interpreter = Interpreter(lexer)
+    input_text = """
+    loop i from 1 to 5 {
+        a = a + i;
+    }
+    loop 3 times {
+        b = "hello";
+    }
+    """
+    lexer = Lexer(input_text)
 
-    while True:
-        try:
-            text = input("Cacti > ")
-        except EOFError:
-            break
-        if not text:
-            continue
+    token = lexer.get_next_token()
+    while token.type != EOF:
+        print(token)
+        token = lexer.get_next_token()
+    
+    print(token)
 
-        # 新しい入力でLexerとInterpreterをリセット
-        lexer = Lexer(text)
-        interpreter.lexer = lexer
-        interpreter.current_token = interpreter.lexer.get_next_token()
-
-        # プログラムを実行
-        result = interpreter.program()
-        if result is not None:
-            print(result)
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
